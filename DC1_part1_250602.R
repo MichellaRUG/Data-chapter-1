@@ -1,12 +1,18 @@
+#Hi Mo :)
+
+
 rm(list=ls())
 
-usethis::use_git_config(user.name = "MichellaRUG", user.email = "m.ligtelijn@rug.nl")
+#usethis::use_git_config(user.name = "MichellaRUG", user.email = "m.ligtelijn@rug.nl")
 #usethis::create_github_token()     # Copy the token from browser
-gitcreds::gitcreds_set()           # Paste the token in R
-usethis::use_git()                 # Initialize Git (if not yet done)
+#gitcreds::gitcreds_set()           # Paste the token in R
+#usethis::use_git()                 # Initialize Git (if not yet done)
 usethis::use_github()              # Create & push repo to GitHub
 
-lalalala
+#run the following 2 lines IN THE CONSOLE to update the newest version of the code to the GitHub website
+#system("git add .")
+#system("git push")
+
 
 #Load packages
 library(usethis) 
