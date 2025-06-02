@@ -1,4 +1,4 @@
-#Hi Mo :) how are you doing?
+#Hi Mo :) Can you let me know if you see this code through GitHub?
 
 
 rm(list=ls())
