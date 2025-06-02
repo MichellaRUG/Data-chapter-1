@@ -1,5 +1,8 @@
 rm(list=ls())
 
+
+usethis::use_git_config(user.name = "MichellaRUG", user.email = "m.ligtelijn@rug.nl")
+
 usethis::use_git()        # Initializes git for your project
 usethis::use_github()     # Pushes project to GitHub
 
