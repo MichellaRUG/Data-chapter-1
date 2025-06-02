@@ -1,18 +1,12 @@
 rm(list=ls())
 
-# 1. Set Git user info (only needs to be done once on your computer)
 usethis::use_git_config(user.name = "MichellaRUG", user.email = "m.ligtelijn@rug.nl")
+#usethis::create_github_token()     # Copy the token from browser
+gitcreds::gitcreds_set()           # Paste the token in R
+usethis::use_git()                 # Initialize Git (if not yet done)
+usethis::use_github()              # Create & push repo to GitHub
 
-# 2. Create and register a GitHub Personal Access Token (only once)
-usethis::create_github_token()    # Opens GitHub to generate token
-gitcreds::gitcreds_set()          # Paste the token here
-
-# 3. Initialize Git in your R project (run this inside a valid R Project)
-usethis::use_git()
-
-# 4. Push the R project to GitHub
-usethis::use_github()
-
+lalalala
 
 #Load packages
 library(usethis) 
