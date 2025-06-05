@@ -1,12 +1,9 @@
-#Hi Mo :) Can you let me know if you see this code through GitHub?
-
-
 rm(list=ls())
 
 #only once
-usethis::use_git_config(user.name = "MichellaRUG", user.email = "m.ligtelijn@rug.nl")
-usethis::create_github_token()
-gitcreds::gitcreds_set()
+#usethis::use_git_config(user.name = "MichellaRUG", user.email = "m.ligtelijn@rug.nl")
+#usethis::create_github_token()
+#gitcreds::gitcreds_set()
 
 #to push to GitHub
 usethis::use_git()     # Initializes git in the project
@@ -19,7 +16,7 @@ system('git commit -m "last version"')
 system("git push")
 
 
-#Load packages
+#Load packages (still need to clean this up, I might not need all these libraries :))
 library(usethis) 
 library(readxl)
 library(dplyr)
@@ -43,12 +40,10 @@ library(tidyr)
 
 
 #Load data
-
 df <- read_excel("G:/My Drive/PhD/Data/Big data set/big_data_ch3_310325.xlsx", sheet = 2)
 
 
-Make modifications to the data
-```{r}
+#Make modifications to the data
 # throw out the lines for which there is no biomass data
 df2 <- df %>% filter(!is.na(biomass))
 
@@ -66,21 +61,12 @@ df2 <- na.omit(df2)
 ### now split 2022 and 2023. I will work from df2 (347 obs.)
 df2_2022 <- df2 %>% filter(year == 2022)
 df2_2023 <- df2 %>% filter(year == 2023)
-```
-
-#Part 1 
-First test the effect of time
-When making models, the DHARMa plots do not look good at all. So, we use a simple correlation for now
-```{r}
-cor.test(df2_2022$biomass, df2_2022$weeknr, method = "spearman")
-cor.test(df2_2023$biomass, df2_2023$weeknr, method = "spearman")
-```
 
 
-To reinforce the point that time has an effect. Over time you see biomass and environmental variables change. It does not change linear, so there is more than time that affects this. To minimize the effect of time we are going to make smaller seasons. The season division is based on insect biomass dynamics. We do not make the cut-off in a peak, but between peaks to make the seasons similar.
+#First test the effect of time
+#To reinforce the point that time has an effect. Over time you see biomass and environmental variables change. It does not change linear, so there is more than time that affects this. To minimize the effect of time we are going to make smaller seasons. The season division is based on insect biomass dynamics. We do not make the cut-off in a peak, but between peaks to make the seasons similar.
 
-Make the seasons
-```{r}
+#Make the seasons
 df2 <- df2 %>%
   mutate(season = case_when(
     weeknr < 23 ~ "early",
@@ -105,11 +91,9 @@ df2_2023 <- df2_2023 %>%
 df2$season <- as.factor(df2$season)
 df2_2022$season <- as.factor(df2_2022$season)
 df2_2023$season <- as.factor(df2_2023$season)
-```
 
 
-Make model for 2022 
-```{r}
+#Make model for 2022 
 model_seasons2022 <- glmmTMB(biomass ~ season + (1|meadowid), data = df2_2022, family = gaussian(), REML=FALSE)
 summary(model_seasons2022) #AIC=1302.70
 plot(simulateResiduals(model_seasons2022, refit=FALSE))
@@ -133,10 +117,9 @@ plot(simulateResiduals(model_seasons2022_log, refit=FALSE))
 
 emmeans_results <- emmeans(model_seasons2022_log, pairwise ~ season, adjust = "tukey")
 emmeans_results$contrasts
-```
 
-Make graph for 2022
-```{r}
+
+#Make graph for 2022
 season_x_pos <- c(early = 21, mid = 25, late = 30)  
 y_max <- 100  
 y_offset <- 95 
@@ -164,15 +147,14 @@ biomass_graph_2022
 
 ggsave("biomass2022_plot.png", dpi = 300, width = 8, height = 6)
 
-library(mgcv)
+
 
 #this part is to check if the k value is the right value. We set it at 15 to avoid over fitting.
 fit <- gam(biomass ~ s(weeknr, bs = "cs", k = ), data = df2_2022, method = "REML")
 gam.check(fit)
-```
 
-Make model for 2023
-```{r}
+
+#Make model for 2023
 model_seasons2023 <- glmmTMB(biomass ~ season + (1|meadowid), data = df2_2023, family = gaussian(), REML=FALSE)
 hist(log(df2_2023$biomass+1), breaks=30)
 summary(model_seasons2023) #AIC=1558.2
@@ -209,10 +191,9 @@ plot(simulateResiduals(model_seasons2023_log, refit=FALSE))
 
 emmeans_results <- emmeans(model_seasons2023_log, pairwise ~ season, adjust = "tukey")
 emmeans_results$contrasts
-```
 
-Make graph for 2023
-```{r}
+
+#Make graph for 2023
 season_x_pos <- c(early = 21, mid = 25, late = 30)  
 y_max <- 100  
 y_offset <- 95 
@@ -238,21 +219,11 @@ ggsave("biomass2023_plot.png", dpi = 300, width = 8, height = 6)
 
 fit <- gam(biomass ~ s(weeknr, bs = "cs", k = 20), data = df2_2023, method = "REML")
 gam.check(fit)
-```
-
-
-Combine the biomass graph for 2022 and 2023
-```{r}
-# Combine the two plots into one image (on top of each other)
-combined_plot <- grid.arrange(biomass_graph_2022, biomass_graph_2023, nrow = 2)
-
-ggsave("G:/My Drive/PhD/Data/Big data set/combined_biomass_graphs.png", plot = combined_plot, width = 8.27, height = 9, units = "in")
-```
 
 
 
-Make combined plot the Mo way
-```{r}
+
+#Make combined plot 
 plot_biomass <- ggplot(df2, aes(x = weeknr, y = biomass)) +
   geom_point(alpha = 0.5) +
   geom_smooth(method = "gam", formula = y ~ s(x, bs = "cs", k = 15), color = "black", linewidth = 1.2) +
@@ -269,20 +240,17 @@ plot_biomass <- ggplot(df2, aes(x = weeknr, y = biomass)) +
 plot_biomass
 
 ggsave("G:/My Drive/PhD/Data/Big data set/combined_plot_biomass.png", plot = plot_biomass, width = 8.27, height = 9, units = "in")
-```
 
 
 
-This was for all the fields combined, but I also want the graphs for the fields separate. I do not need a model.
+#This was for all the fields combined, but I also want the graphs for the fields separate. I do not need a model.
 
-First make GPI200_ave a factor
-```{r}
+#First make GPI200_ave a factor
 df2_2022$GPI200_ave <-as.factor(df2_2022$GPI200_ave)
 df2_2023$GPI200_ave <-as.factor(df2_2023$GPI200_ave)
-```
 
-2022
-```{r}
+
+#2022
 df2_2022$GPI200_ave <- factor(round(as.numeric(as.character(df2_2022$GPI200_ave)), 4))
 
 color_palette <- c(
@@ -319,10 +287,9 @@ biomass_separate_graph_2022 <- ggplot(df2_2022, aes(x = weeknr, y = biomass, col
 biomass_separate_graph_2022
 
 ggsave("biomass_separate_graph_2022.png", dpi = 300, width = 8, height = 6)
-```
 
-2023
-```{r}
+
+#2023
 df2_2023$GPI200_ave <- factor(round(as.numeric(as.character(df2_2023$GPI200_ave)), 4))
 #this was to match the colors between years. Not yet updated 
 color_palette <- c(                #2022     #2023
@@ -364,137 +331,21 @@ biomass_separate_graph_2023 <- ggplot(df2_2023, aes(x = weeknr, y = biomass, col
 biomass_separate_graph_2023
 
 ggsave("biomass_separate_graph_2023.png", dpi = 300, width = 8, height = 6)
-```
 
-Combine the graphs
-```{r}
+
+#Combine the graphs
 combined_plot <- grid.arrange(biomass_separate_graph_2022, biomass_separate_graph_2023, nrow = 2)
 
 ggsave("G:/My Drive/PhD/Data/Big data set/combined_biomass_separate_graphs.png", plot = combined_plot, width = 8.27, height = 7, units = "in")
-```
 
-For the results I want to know the average biomass per year
-```{r}
+
+#For the results I want to know the average biomass per year
 mean(df2_2022$biomass)
 mean(df2_2023$biomass)
-```
 
 
 
-Boxplot of the biomass per season per year and combine it
-
-2022
-```{r}
-df2_2022$season <- factor(df2_2022$season, levels = c("early", "mid", "late"))
-
-y_max <- 100
-y_arrow <- y_max - 15  
-x_max <- max(as.numeric(df2_2022$season))
-
-boxplot2022 <- ggplot(df2_2022, aes(x = season, y = biomass)) +
-  geom_boxplot(fill = "lightgrey", color = "black") +
-  theme_minimal() +
-  labs(
-    title = NULL,
-    x = NULL,
-    y = "Biomass (g)"
-  ) +
-  theme(
-    plot.title = element_text(hjust = 0.5),
-    axis.text.x = element_blank(),
-    axis.ticks.x = element_blank()
-  ) +
-  # Early vs Mid
-  geom_bracket(
-    xmin = 1, xmax = 2, y.position = y_arrow + 8, label = "<0.01",
-    tip.length = 0.01, label.size = 3, fontface = "italic", size = 1.1
-  ) +
-  # Early vs Late
-  geom_bracket(
-    xmin = 1, xmax = 3, y.position = y_arrow + 1, label = "<0.01",
-    tip.length = 0.01, label.size = 3, fontface = "italic", size = 1.1
-  ) +
-  # Mid vs Late
-  geom_bracket(
-    xmin = 2, xmax = 3, y.position = y_arrow - 6, label = "0.5876",
-    tip.length = 0.01, label.size = 3, fontface = "italic", size = 1.1
-  ) +
-  annotate("text",
-           x = x_max + 0.5,
-           y = y_max - 2,  
-           label = "2022",
-           hjust = 1,
-           size = 5,
-           fontface = "bold") +
-  scale_y_continuous(limits = c(0, 100))
-
-boxplot2022
-```
-
-2023
-```{r}
-df2_2023$season <- factor(df2_2023$season, levels = c("early", "mid", "late"))
-
-y_max <- 100
-y_arrow <- y_max - 15  
-x_max <- max(as.numeric(df2_2023$season))
-
-boxplot2023 <- ggplot(df2_2023, aes(x = season, y = biomass)) +
-  geom_boxplot(fill = "lightgrey", color = "black") +
-  theme_minimal() +
-  labs(
-    title = NULL,
-    x = "Season",
-    y = "Biomass (g)"
-  ) +
-  theme(
-    plot.title = element_text(hjust = 0.5),
-    axis.text.x = element_text(),
-    axis.ticks.x = element_blank()
-  ) +
-  # Early vs Mid
-  geom_bracket(
-    xmin = 1, xmax = 2, y.position = y_arrow + 8, label = "<0.01",
-    tip.length = 0.01, label.size = 3, fontface = "italic", size = 1.1
-  ) +
-  # Early vs Late
-  geom_bracket(
-    xmin = 1, xmax = 3, y.position = y_arrow + 1, label = "<0.01",
-    tip.length = 0.01, label.size = 3, fontface = "italic", size = 1.1
-  ) +
-  # Mid vs Late
-  geom_bracket(
-    xmin = 2, xmax = 3, y.position = y_arrow - 6, label = "0.5876",
-    tip.length = 0.01, label.size = 3, fontface = "italic", size = 1.1
-  ) +
-  annotate("text",
-           x = x_max + 0.5,
-           y = y_max - 2,  
-           label = "2023",
-           hjust = 1,
-           size = 5,
-           fontface = "bold") +
-  scale_y_continuous(limits = c(0, 100))
-
-boxplot2023
-```
-
-Combine the graphs
-```{r}
-combined_boxplot <- ggarrange(
-  boxplot2022, boxplot2023,
-  ncol = 1, nrow = 2,
-  labels = c("A", "B"),
-  align = "v"
-)
-
-combined_boxplot
-
-ggsave("G:/My Drive/PhD/Data/Big data set/combined_biomass_boxplots.png", plot = combined_boxplot, width = 7, height = 10, units = "in")
-```
-
-Same boxplots, but the Mo method
-```{r}
+#Boxplot of the biomass per season per year and combine it
 brackets_df <- data.frame(
   year = c(2022, 2022, 2022, 2023, 2023, 2023),
   xmin = c(1, 1, 2, 1, 1, 2),
@@ -527,15 +378,13 @@ boxplot_biomass <- ggplot(df2, aes(x = season, y = biomass)) +
 boxplot_biomass
 
 ggsave("G:/My Drive/PhD/Data/Big data set/combined_boxplot_biomass.png", plot = boxplot_biomass, width = 8, height = 11, units = "in")
-```
 
 
 
 
-Now we have to make similar graphs for the environmental variables
-Soil moisture
-2022
-```{r}
+#Now we have to make similar graphs for the environmental variables
+#Soil moisture
+#2022
 season_x_pos <- c(early = 21, mid = 25, late = 30)
 
 sm_graph_2022 <- ggplot(df2_2022, aes(x = weeknr, y = sm_ave)) +
@@ -559,10 +408,9 @@ sm_graph_2022 <- ggplot(df2_2022, aes(x = weeknr, y = sm_ave)) +
 sm_graph_2022
 
 ggsave("sm2022_plot.png", dpi = 300, width = 8, height = 6)
-```
 
-2023
-```{r}
+
+#2023
 season_x_pos <- c(early = 21, mid = 25, late = 30)
 
 sm_graph_2023 <- ggplot(df2_2023, aes(x = weeknr, y = sm_ave)) +
@@ -586,19 +434,10 @@ sm_graph_2023 <- ggplot(df2_2023, aes(x = weeknr, y = sm_ave)) +
 sm_graph_2023
 
 ggsave("sm2023_plot.png", dpi = 300, width = 8, height = 6)
-```
-
-Combine the graphs
-```{r}
-combined_plot <- grid.arrange(sm_graph_2022, sm_graph_2023, nrow = 2)
-
-ggsave("G:/My Drive/PhD/Data/Big data set/combined_sm_graphs.png", plot = combined_plot, width = 8.27, height = 7, units = "in")
-```
 
 
-Vegetation height
-2022
-```{r}
+#Vegetation height
+#2022
 season_x_pos <- c(early = 21, mid = 25, late = 30)
 
 veghgt_graph_2022 <- ggplot(df2_2022, aes(x = weeknr, y = veghgt_ave)) +
@@ -622,10 +461,8 @@ veghgt_graph_2022 <- ggplot(df2_2022, aes(x = weeknr, y = veghgt_ave)) +
 veghgt_graph_2022
 
 ggsave("veghgt2022_plot.png", dpi = 300, width = 8, height = 6)
-```
 
-2023
-```{r}
+#2023
 season_x_pos <- c(early = 21, mid = 25, late = 30)
 
 veghgt_graph_2023 <- ggplot(df2_2023, aes(x = weeknr, y = veghgt_ave)) +
@@ -649,19 +486,12 @@ veghgt_graph_2023 <- ggplot(df2_2023, aes(x = weeknr, y = veghgt_ave)) +
 veghgt_graph_2023
 
 ggsave("veghgt2023_plot.png", dpi = 300, width = 8, height = 6)
-```
-
-Combine the graphs
-```{r}
-combined_plot <- grid.arrange(veghgt_graph_2022, veghgt_graph_2023, nrow = 2)
-
-ggsave("G:/My Drive/PhD/Data/Big data set/combined_veghgt_graphs.png", plot = combined_plot, width = 8.27, height = 7, units = "in")
-```
 
 
-Soil resistance
-2022
-```{r}
+
+
+#Soil resistance
+#2022
 season_x_pos <- c(early = 21, mid = 25, late = 30)
 
 soilres_graph_2022 <- ggplot(df2_2022, aes(x = weeknr, y = soilres_ave)) +
@@ -689,10 +519,9 @@ soilres_graph_2022 <- ggplot(df2_2022, aes(x = weeknr, y = soilres_ave)) +
 soilres_graph_2022
 
 ggsave("soilres2022_plot.png", dpi = 300, width = 8, height = 6)
-```
 
-2023
-```{r}
+
+#2023
 season_x_pos <- c(early = 21, mid = 25, late = 30)
 
 soilres_graph_2023 <- ggplot(df2_2023, aes(x = weeknr, y = soilres_ave)) +
@@ -720,25 +549,16 @@ soilres_graph_2023 <- ggplot(df2_2023, aes(x = weeknr, y = soilres_ave)) +
 soilres_graph_2023
 
 ggsave("soilres2023_plot.png", dpi = 300, width = 8, height = 6)
-```
 
-Combine the graphs
-```{r}
-combined_plot <- grid.arrange(soilres_graph_2022, soilres_graph_2023, nrow = 2)
 
-ggsave("G:/My Drive/PhD/Data/Big data set/combined_soilres_graphs.png", plot = combined_plot, width = 8.27, height = 7, units = "in")
-```
 
-Calculate correlation between soil moisture and soil resistance per year
-```{r}
+
+#Calculate correlation between soil moisture and soil resistance per year
 cor(df2_2022$soilres_ave, df2_2022$sm_ave, use = "complete.obs", method = "pearson")
 cor(df2_2023$soilres_ave, df2_2023$sm_ave, use = "complete.obs", method = "pearson")
-```
 
 
-Make very big graph with vegetation height, soil moisture, soil resistance, and mowing in one.
-
-```{r}
+#Make very big graph with vegetation height, soil moisture, soil resistance, and mowing in one.
 df2$year <- as.factor(df2$year)
 
 df_long <- df2 %>%
@@ -781,15 +601,13 @@ plot_all_env
 
 
 ggsave("G:/My Drive/PhD/Data/Big data set/plot_all_env.png", plot = plot_all_env, width = 10, height = 14, units = "in")
-```
 
 
 
-Make comparison between 2022 and 2023 per season for the different variables
-Add seasons to dataset df2
+#Make comparison between 2022 and 2023 per season for the different variables
+#Add seasons to dataset df2
 
-Make the seasons
-```{r}
+#Make the seasons
 df2 <- df2 %>%
   mutate(season = case_when(
     weeknr < 23 ~ "early",
@@ -798,10 +616,8 @@ df2 <- df2 %>%
   ))
 
 df2$season <- as.factor(df2$season)
-```
 
-Model biomass
-```{r}
+#Model biomass
 model_biomass <- glmmTMB(biomass ~ season * year, data = df2, family = gaussian(), REML=FALSE)
 summary(model_biomass) #AIC=2876.1
 plot(simulateResiduals(model_biomass, refit=FALSE))
@@ -833,10 +649,8 @@ plot(simulateResiduals(model_biomass_log, refit=FALSE))
 
 emmeans_results <- emmeans(model_biomass_log, pairwise ~ year|season, adjust = "tukey")
 emmeans_results$contrasts
-```
 
-Graph biomass
-```{r}
+#Graph biomass
 df2$season <- factor(df2$season, levels = c("early", "mid", "late"))
 
 y_max <- max(df2$biomass, na.rm = TRUE)
@@ -879,12 +693,11 @@ boxplot_biomass <- ggplot(df2, aes(x = season, y = biomass)) +
 boxplot_biomass
 
 ggsave("G:/My Drive/PhD/Data/Big data set/biomass_season.png", plot = boxplot_biomass, width = 7, height = 10, units = "in")
-```
 
 
 
-Model soil moisture
-```{r}
+
+#Model soil moisture
 model_sm <- glmmTMB(sm_ave ~ season * year, data = df2, family = gaussian(), REML=FALSE)
 summary(model_sm) #AIC=2854.8
 plot(simulateResiduals(model_sm, refit=FALSE))
@@ -908,10 +721,9 @@ plot(simulateResiduals(model_sm_log, refit=FALSE))
 
 emmeans_results <- emmeans(model_sm_log, pairwise ~ year|season, adjust = "tukey")
 emmeans_results$contrasts
-```
 
-Graph soil moisture
-```{r}
+
+#Graph soil moisture
 df2$season <- factor(df2$season, levels = c("early", "mid", "late"))
 
 # Define y_arrow for positioning the brackets
@@ -956,13 +768,12 @@ boxplot_sm <- ggplot(df2, aes(x = season, y = sm_ave)) +
 boxplot_sm
 
 ggsave("G:/My Drive/PhD/Data/Big data set/sm_season.png", plot = boxplot_sm, width = 7, height = 10, units = "in")
-```
 
 
 
 
-Model soil resistance
-```{r}
+
+#Model soil resistance
 model_soilres <- glmmTMB(soilres_ave ~ season * year, data = df2, family = gaussian(), REML=FALSE)
 summary(model_soilres) #AIC=2723.1
 plot(simulateResiduals(model_soilres, refit=FALSE))
@@ -986,10 +797,9 @@ plot(simulateResiduals(model_soilres_log, refit=FALSE))
 
 emmeans_results <- emmeans(model_soilres_log, pairwise ~ year|season, adjust = "tukey")
 emmeans_results$contrasts
-```
 
-Graph soil resistance
-```{r}
+
+#Graph soil resistance
 df2$season <- factor(df2$season, levels = c("early", "mid", "late"))
 
 y_max <- max(df2$soilres_ave, na.rm = TRUE)
@@ -1032,13 +842,12 @@ boxplot_soilres <- ggplot(df2, aes(x = season, y = soilres_ave)) +
 boxplot_soilres
 
 ggsave("G:/My Drive/PhD/Data/Big data set/soilres_season.png", plot = boxplot_soilres, width = 7, height = 10, units = "in")
-```
 
 
 
 
-Model vegetation height
-```{r}
+
+#Model vegetation height
 model_veghgt <- glmmTMB(veghgt_ave ~ season * year, data = df2, family = gaussian(), REML=FALSE)
 summary(model_veghgt) #AIC=2587.2
 plot(simulateResiduals(model_veghgt, refit=FALSE))
@@ -1062,10 +871,9 @@ plot(simulateResiduals(model_veghgt_log, refit=FALSE))
 
 emmeans_results <- emmeans(model_veghgt_log, pairwise ~ year|season, adjust = "tukey")
 emmeans_results$contrasts
-```
 
-Graph vegetation height
-```{r}
+
+#Graph vegetation height
 df2$season <- factor(df2$season, levels = c("early", "mid", "late"))
 
 y_max <- max(df2$veghgt_ave, na.rm = TRUE)
@@ -1108,12 +916,11 @@ boxplot_veghgt <- ggplot(df2, aes(x = season, y = veghgt_ave)) +
 boxplot_veghgt
 
 ggsave("G:/My Drive/PhD/Data/Big data set/veghgt_season.png", plot = boxplot_veghgt, width = 7, height = 10, units = "in")
-```
 
 
 
-Model mowing
-```{r}
+
+#Model mowing
 model_mowing <- glmmTMB(mowing ~ season * year, data = df2, family = gaussian(), REML=FALSE)
 summary(model_mowing) #AIC=1822.1
 plot(simulateResiduals(model_mowing, refit=FALSE))
@@ -1136,10 +943,8 @@ plot(simulateResiduals(model_mowing_log, refit=FALSE))
 
 emmeans_results <- emmeans(model_mowing_log, pairwise ~ year|season, adjust = "tukey")
 emmeans_results$contrasts
-```
 
-Graph mowing
-```{r}
+#Graph mowing
 df2$season <- factor(df2$season, levels = c("early", "mid", "late"))
 
 # Define y_arrow for positioning the brackets
@@ -1185,23 +990,20 @@ boxplot_mowing <- ggplot(df2, aes(x = season, y = mowing)) +
 boxplot_mowing
 
 ggsave("G:/My Drive/PhD/Data/Big data set/mowing_season.png", plot = boxplot_mowing, width = 7, height = 7, units = "in")
-```
 
 
 
-Make the mowing model and graph again, but this time with only the fields that were sampled in both years
 
-Make selection dataset. exclude fields that were not sampled in both years
-```{r}
+#Make the mowing model and graph again, but this time with only the fields that were sampled in both years
+
+#Make selection dataset. exclude fields that were not sampled in both years
 df2_selection <- df2[df2$meadowid != "100028" &
                        df2$meadowid != "128006" &
                        df2$meadowid != "660024" &
                        df2$meadowid != "240063", ]
-```
 
 
-Model mowing with selection dataset
-```{r}
+#Model mowing with selection dataset
 model_mowing <- glmmTMB(mowing ~ season * year, data = df2_selection, family = gaussian(), REML=FALSE)
 summary(model_mowing) #AIC=1466.6
 plot(simulateResiduals(model_mowing, refit=FALSE))
@@ -1224,10 +1026,8 @@ plot(simulateResiduals(model_mowing_log, refit=FALSE))
 
 emmeans_results <- emmeans(model_mowing_log, pairwise ~ year|season, adjust = "tukey")
 emmeans_results$contrasts
-```
 
-Graph mowing with selection dataset
-```{r}
+#Graph mowing with selection dataset
 df2_selection$season <- factor(df2_selection$season, levels = c("early", "mid", "late"))
 
 # Define y_arrow for positioning the brackets
@@ -1273,6 +1073,3 @@ boxplot_mowing_selection <- ggplot(df2_selection, aes(x = season, y = mowing)) +
 boxplot_mowing_selection
 
 ggsave("G:/My Drive/PhD/Data/Big data set/mowing_season_selection.png", plot = boxplot_mowing_selection, width = 7, height = 7, units = "in")
-```
-
-

@@ -1,0 +1,710 @@
+rm(list=ls())
+
+Load packages
+```{r}
+library(readxl)
+library(dplyr)
+library(glmmTMB)
+library(factoextra)
+library(ggplot2)
+library(piecewiseSEM)
+library(ggplot2)
+library(DHARMa)
+library(emmeans)
+library(gridExtra)
+library(viridis)
+library(gridExtra)
+library(grid)
+library(mgcv)
+library(patchwork)
+library(MuMIn)
+library(ggeffects)
+library(ggpubr)
+```
+
+Load data
+```{r}
+df <- read_excel("G:/My Drive/PhD/Data/Big data set/big_data_ch3_310325.xlsx", sheet = 2)
+```
+
+Make modifications to the data
+```{r}
+# throw out the lines for which there is no biomass data
+df2 <- df %>% filter(!is.na(biomass))
+
+# remove un-used columns
+df2$airtemp_ave <- NULL
+df2$airtemp_sd <- NULL
+df2$soiltemp_ave <- NULL
+df2$soiltemp_sd <- NULL
+df2$comments <- NULL
+
+#current dataset is 371 obs and 22 variables. Remove all NAs
+df2 <- na.omit(df2)
+
+
+### now split 2022 and 2023. I will work from df2 (347 obs.)
+df2_2022 <- df2 %>% filter(year == 2022)
+df2_2023 <- df2 %>% filter(year == 2023)
+```
+
+Make the seasons
+```{r}
+df2_2022 <- df2_2022 %>%
+  mutate(season = case_when(
+    weeknr < 23 ~ "early",
+    weeknr >= 23 & weeknr <= 29 ~ "mid",
+    weeknr > 29 ~ "late"
+  ))
+
+df2_2023 <- df2_2023 %>%
+  mutate(season = case_when(
+    weeknr < 23 ~ "early",
+    weeknr >= 23 & weeknr <= 29 ~ "mid",
+    weeknr > 29 ~ "late"
+  ))
+
+df2_2022$season <- as.factor(df2_2022$season)
+df2_2023$season <- as.factor(df2_2023$season)
+```
+
+Make rainfall and windspeed into classes
+```{r}
+#rainfall
+df2_2022$rainfall_cat <- ifelse(
+  df2_2022$rainfall < 10, "Low",
+  ifelse(df2_2022$rainfall <= 50, "Medium", "High")
+)
+
+df2_2023$rainfall_cat <- ifelse(
+  df2_2023$rainfall < 10, "Low",
+  ifelse(df2_2023$rainfall <= 50, "Medium", "High")
+)
+
+
+#windspeed
+#windspeed * 0.1, because of the way it was noted in the KNMI dataset
+df2_2022$wind_speed_ave <- df2_2022$wind_speed_ave * 0.1
+df2_2023$wind_speed_ave <- df2_2023$wind_speed_ave * 0.1
+
+
+#from m/s to km/h
+df2_2022$wind_speed_ave_kmh <- df2_2022$wind_speed_ave * 3.6
+df2_2023$wind_speed_ave_kmh <- df2_2023$wind_speed_ave * 3.6
+
+#wind speed classes made according to :https://www.rmets.org/metmatters/beaufort-wind-scale
+
+
+df2_2022$windspeed_cat <- ifelse(
+  df2_2022$wind_speed_ave_kmh >= 12 & df2_2022$wind_speed_ave_kmh < 20, "Gentle breeze",
+  ifelse(df2_2022$wind_speed_ave_kmh >= 20 & df2_2022$wind_speed_ave_kmh < 29, "Moderate breeze",
+    ifelse(df2_2022$wind_speed_ave_kmh >= 29 & df2_2022$wind_speed_ave_kmh <= 38, "Fresh breeze",NA)
+  )
+)
+
+
+df2_2023$windspeed_cat <- ifelse(
+  df2_2023$wind_speed_ave_kmh >= 12 & df2_2023$wind_speed_ave_kmh < 20, "Gentle breeze",
+  ifelse(df2_2023$wind_speed_ave_kmh >= 20 & df2_2023$wind_speed_ave_kmh < 29, "Moderate breeze",
+    ifelse(df2_2023$wind_speed_ave_kmh >= 29 & df2_2023$wind_speed_ave_kmh <= 38, "Fresh breeze", NA)
+  )
+)
+```
+
+Scale all variables
+```{r}
+df2_2022$biomass.sc <- scale(df2_2022$biomass)
+df2_2022$veghgt_ave.sc <- scale(df2_2022$veghgt_ave)
+df2_2022$sm_ave.sc <- scale(df2_2022$sm_ave)
+df2_2022$soilres_ave.sc <- scale(df2_2022$soilres_ave)
+df2_2022$LUI2016.sc <- scale(df2_2022$LUI2016)
+df2_2022$GPI200_ave.sc <- scale(df2_2022$GPI200_ave)
+df2_2022$mowing.sc <- scale(df2_2022$mowing)
+df2_2022$knmitemp_ave.sc <- scale(df2_2022$knmitemp_ave)
+
+df2_2023$biomass.sc <- scale(df2_2023$biomass)
+df2_2023$veghgt_ave.sc <- scale(df2_2023$veghgt_ave)
+df2_2023$sm_ave.sc <- scale(df2_2023$sm_ave)
+df2_2023$soilres_ave.sc <- scale(df2_2023$soilres_ave)
+df2_2023$LUI2016.sc <- scale(df2_2023$LUI2016)
+df2_2023$GPI200_ave.sc <- scale(df2_2023$GPI200_ave)
+df2_2023$mowing.sc <- scale(df2_2023$mowing)
+df2_2023$knmitemp_ave.sc <- scale(df2_2023$knmitemp_ave)
+```
+
+Make a dataset per season
+```{r}
+df2_2022_early <- subset(df2_2022, weeknr >= 14 & weeknr <= 22)
+df2_2022_mid   <- subset(df2_2022, weeknr >= 23 & weeknr <= 29)
+df2_2022_late  <- subset(df2_2022, weeknr >= 30 & weeknr <= 35)
+
+df2_2023_early <- subset(df2_2023, weeknr >= 15 & weeknr <= 22)
+df2_2023_mid   <- subset(df2_2023, weeknr >= 23 & weeknr <= 29)
+df2_2023_late  <- subset(df2_2023, weeknr >= 30 & weeknr <= 34)
+```
+
+
+
+
+
+
+#Part III
+Structural equation model
+6 SEMs early, mid, late, 2022, 2023
+
+
+
+Biomass 2022 - early 
+```{r}
+sem_biomass_early2022 <- glmmTMB(biomass ~ veghgt_ave.sc + sm_ave.sc + GPI200_ave.sc + LUI2016.sc + mowing.sc + (1|rainfall_cat) + (1|windspeed_cat) + knmitemp_ave.sc, data = df2_2022_early, family = gaussian(), REML=FALSE)
+summary(sem_biomass_early2022) #AIC=500.2
+plot(simulateResiduals(sem_biomass_early2022, refit=FALSE))
+
+sem_biomass_early2022_sqrt <- glmmTMB(sqrt(biomass) ~ veghgt_ave.sc + sm_ave.sc + GPI200_ave.sc + LUI2016.sc + mowing.sc + (1|rainfall_cat) + (1|windspeed_cat) + knmitemp_ave.sc, data = df2_2022_early, family = gaussian(), REML=FALSE)
+summary(sem_biomass_early2022_sqrt) #AIC=231.2
+plot(simulateResiduals(sem_biomass_early2022_sqrt, refit=FALSE))
+
+sem_biomass_early2022_log <- glmmTMB(log(biomass+1) ~ veghgt_ave.sc + sm_ave.sc + GPI200_ave.sc + LUI2016.sc + mowing.sc + (1|rainfall_cat) + (1|windspeed_cat) + knmitemp_ave.sc, data = df2_2022_early, family = gaussian(), REML=FALSE)
+summary(sem_biomass_early2022_log) #AIC=157.9
+plot(simulateResiduals(sem_biomass_early2022_log, refit=FALSE))
+
+
+AICc(sem_biomass_early2022, sem_biomass_early2022_sqrt, sem_biomass_early2022_log)
+
+#best model
+sem_biomass_early2022_log <- glmmTMB(log(biomass+1) ~ veghgt_ave.sc + sm_ave.sc + GPI200_ave.sc + LUI2016.sc + mowing.sc + (1|rainfall_cat) + (1|windspeed_cat) + knmitemp_ave.sc, data = df2_2022_early, family = gaussian(), REML=T)
+summary(sem_biomass_early2022_log) 
+plot(simulateResiduals(sem_biomass_early2022_log, refit=FALSE))
+```
+
+biomass 2022 - mid
+```{r}
+sem_biomass_mid2022 <- glmmTMB(biomass ~ veghgt_ave.sc + sm_ave.sc + GPI200_ave.sc + LUI2016.sc + mowing.sc + (1|rainfall_cat) + (1|windspeed_cat) + knmitemp_ave.sc, data = df2_2022_mid, family = gaussian(), REML=FALSE)
+summary(sem_biomass_mid2022) #AIC=413.1
+plot(simulateResiduals(sem_biomass_mid2022, refit=FALSE))
+
+sem_biomass_mid2022_sqrt <- glmmTMB(sqrt(biomass) ~ veghgt_ave.sc + sm_ave.sc + GPI200_ave.sc + LUI2016.sc + mowing.sc + (1|rainfall_cat) + (1|windspeed_cat) + knmitemp_ave.sc, data = df2_2022_mid, family = gaussian(), REML=FALSE)
+summary(sem_biomass_mid2022_sqrt) #AIC=172.9
+plot(simulateResiduals(sem_biomass_mid2022_sqrt, refit=FALSE))
+
+sem_biomass_mid2022_log <- glmmTMB(log(biomass+1) ~ veghgt_ave.sc + sm_ave.sc + GPI200_ave.sc + LUI2016.sc + mowing.sc + (1|rainfall_cat) + (1|windspeed_cat) + knmitemp_ave.sc, data = df2_2022_mid, family = gaussian(), REML=FALSE)
+summary(sem_biomass_mid2022_log) #AIC=76.5
+plot(simulateResiduals(sem_biomass_mid2022_log, refit=FALSE))
+
+
+AICc(sem_biomass_mid2022, sem_biomass_mid2022_sqrt, sem_biomass_mid2022_log)
+
+#best model
+sem_biomass_mid2022_log <- glmmTMB(log(biomass+1) ~ veghgt_ave.sc + sm_ave.sc + GPI200_ave.sc + LUI2016.sc + mowing.sc + (1|rainfall_cat) + (1|windspeed_cat) + knmitemp_ave.sc, data = df2_2022_mid, family = gaussian(), REML=T)
+summary(sem_biomass_mid2022_log) #AIC=99
+plot(simulateResiduals(sem_biomass_mid2022_log, refit=FALSE))
+```
+
+biomass 2022 - late
+```{r}
+sem_biomass_late2022 <- glmmTMB(biomass ~ veghgt_ave.sc + sm_ave.sc + GPI200_ave.sc + LUI2016.sc + mowing.sc + (1|rainfall_cat) + (1|windspeed_cat) + knmitemp_ave.sc, data = df2_2022_late, family = gaussian(), REML=F)
+summary(sem_biomass_late2022) #AIC=345.9
+plot(simulateResiduals(sem_biomass_late2022, refit=FALSE))
+
+sem_biomass_late2022_sqrt <- glmmTMB(sqrt(biomass) ~ veghgt_ave.sc + sm_ave.sc + GPI200_ave.sc + LUI2016.sc + mowing.sc + (1|rainfall_cat) + (1|windspeed_cat) + knmitemp_ave.sc, data = df2_2022_late, family = gaussian(), REML=F)
+summary(sem_biomass_late2022_sqrt) #AIC=159.8
+plot(simulateResiduals(sem_biomass_late2022_sqrt, refit=FALSE))
+
+sem_biomass_late2022_log <- glmmTMB(log(biomass+1) ~ veghgt_ave.sc + sm_ave.sc + GPI200_ave.sc + LUI2016.sc + mowing.sc + (1|rainfall_cat) + (1|windspeed_cat) + knmitemp_ave.sc, data = df2_2022_late, family = gaussian(), REML=F)
+summary(sem_biomass_late2022_log) #AIC=86.7
+plot(simulateResiduals(sem_biomass_late2022_log, refit=FALSE))
+
+
+AICc(sem_biomass_late2022, sem_biomass_late2022_sqrt, sem_biomass_late2022_log)
+
+#best model
+sem_biomass_late2022_log <- glmmTMB(log(biomass+1) ~ veghgt_ave.sc + sm_ave.sc + GPI200_ave.sc + LUI2016.sc + mowing.sc + (1|rainfall_cat) + (1|windspeed_cat) + knmitemp_ave.sc, data = df2_2022_late, family = gaussian(), REML=T)
+summary(sem_biomass_late2022_log)
+plot(simulateResiduals(sem_biomass_late2022_log, refit=FALSE))
+```
+
+
+
+vegetation height 2022 - early
+```{r}
+sem_veghgt_early2022 <- glmmTMB(veghgt_ave ~ sm_ave.sc + (1|rainfall_cat) + knmitemp_ave.sc + mowing.sc, data = df2_2022_early, family = gaussian(), REML=F)
+summary(sem_veghgt_early2022) #AIC=400.1
+plot(simulateResiduals(sem_veghgt_early2022, refit=FALSE))
+
+sem_veghgt_early2022_sqrt <- glmmTMB(sqrt(veghgt_ave) ~ sm_ave.sc + (1|rainfall_cat) + knmitemp_ave.sc + mowing.sc, data = df2_2022_early, family = gaussian(), REML=F)
+summary(sem_veghgt_early2022_sqrt) #AIC=153.8
+plot(simulateResiduals(sem_veghgt_early2022_sqrt, refit=FALSE))
+
+sem_veghgt_early2022_log <- glmmTMB(log(veghgt_ave+1) ~ sm_ave.sc + (1|rainfall_cat) + knmitemp_ave.sc + mowing.sc, data = df2_2022_early, family = gaussian(), REML=F)
+summary(sem_veghgt_early2022_log) #AIC=81.8
+plot(simulateResiduals(sem_veghgt_early2022_log, refit=FALSE))
+
+AICc(sem_veghgt_early2022, sem_veghgt_early2022_sqrt, sem_veghgt_early2022_log)
+
+#best model
+sem_veghgt_early2022_sqrt <- glmmTMB(sqrt(veghgt_ave) ~ sm_ave.sc + (1|rainfall_cat) + knmitemp_ave.sc + mowing.sc, data = df2_2022_early, family = gaussian(), REML=T)
+summary(sem_veghgt_early2022_sqrt) #AIC=153.8
+plot(simulateResiduals(sem_veghgt_early2022_sqrt, refit=FALSE))
+```
+
+vegetation height 2022 - mid
+```{r}
+sem_veghgt_mid2022 <- glmmTMB(veghgt_ave ~ sm_ave.sc + (1|rainfall_cat) + knmitemp_ave.sc + mowing.sc, data = df2_2022_mid, family = gaussian(), REML=FALSE)
+summary(sem_veghgt_mid2022) #AIC=301.7
+plot(simulateResiduals(sem_veghgt_mid2022, refit=FALSE))
+
+sem_veghgt_mid2022_sqrt <- glmmTMB(sqrt(veghgt_ave) ~ sm_ave.sc + (1|rainfall_cat) + knmitemp_ave.sc + mowing.sc, data = df2_2022_mid, family = gaussian(), REML=F)
+summary(sem_veghgt_mid2022_sqrt) #AIC=95.2
+plot(simulateResiduals(sem_veghgt_mid2022_sqrt, refit=FALSE))
+
+sem_veghgt_mid2022_log <- glmmTMB(log(veghgt_ave+1) ~ sm_ave.sc + (1|rainfall_cat) + knmitemp_ave.sc + mowing.sc, data = df2_2022_mid, family = gaussian(), REML=FALSE)
+summary(sem_veghgt_mid2022_log) #AIC=27.2
+plot(simulateResiduals(sem_veghgt_mid2022_log, refit=FALSE))
+
+AICc(sem_veghgt_mid2022, sem_veghgt_mid2022_sqrt, sem_veghgt_mid2022_log)
+
+#best model
+sem_veghgt_mid2022_log <- glmmTMB(log(veghgt_ave+1) ~ sm_ave.sc + (1|rainfall_cat) + knmitemp_ave.sc + mowing.sc, data = df2_2022_mid, family = gaussian(), REML=T)
+summary(sem_veghgt_mid2022_log) 
+plot(simulateResiduals(sem_veghgt_mid2022_log, refit=FALSE))
+```
+
+vegetation height 2022 - late
+```{r}
+sem_veghgt_late2022 <- glmmTMB(veghgt_ave ~ sm_ave.sc + (1|rainfall_cat) + knmitemp_ave.sc + mowing.sc, data = df2_2022_late, family = gaussian(), REML=F)
+summary(sem_veghgt_late2022) #AIC=213.1
+plot(simulateResiduals(sem_veghgt_late2022, refit=FALSE))
+
+sem_veghgt_late2022_sqrt <- glmmTMB(sqrt(veghgt_ave) ~ sm_ave.sc + (1|rainfall_cat) + knmitemp_ave.sc + mowing.sc, data = df2_2022_late, family = gaussian(), REML=F)
+summary(sem_veghgt_late2022_sqrt) #AIC=65.2
+plot(simulateResiduals(sem_veghgt_late2022_sqrt, refit=FALSE))
+
+sem_veghgt_late2022_log <- glmmTMB(log(veghgt_ave+1) ~ sm_ave.sc + (1|rainfall_cat) + knmitemp_ave.sc + mowing.sc, data = df2_2022_late, family = gaussian(), REML=F)
+summary(sem_veghgt_late2022_log) #AIC=20.9
+plot(simulateResiduals(sem_veghgt_late2022_log, refit=FALSE))
+
+AICc(sem_veghgt_late2022, sem_veghgt_late2022_sqrt, sem_veghgt_late2022_log)
+
+#best model
+sem_veghgt_late2022_log <- glmmTMB(log(veghgt_ave+1) ~ sm_ave.sc + (1|rainfall_cat) + knmitemp_ave.sc + mowing.sc, data = df2_2022_late, family = gaussian(), REML=T)
+summary(sem_veghgt_late2022_log) 
+plot(simulateResiduals(sem_veghgt_late2022_log, refit=FALSE))
+```
+
+
+
+GPI 2022 - early
+```{r}
+sem_gpi_early2022 <- glmmTMB(GPI200_ave ~ sm_ave.sc + veghgt_ave.sc, data = df2_2022_early, family = gaussian(), REML=FALSE)
+summary(sem_gpi_early2022) #AIC=289.8
+plot(simulateResiduals(sem_gpi_early2022, refit=FALSE))
+
+sem_gpi_early2022_sqrt <- glmmTMB(sqrt(GPI200_ave) ~ sm_ave.sc + veghgt_ave.sc, data = df2_2022_early, family = gaussian(), REML=FALSE)
+summary(sem_gpi_early2022_sqrt) #AIC=-220.5
+plot(simulateResiduals(sem_gpi_early2022_sqrt, refit=FALSE))
+
+sem_gpi_early2022_log <- glmmTMB(log(GPI200_ave+1) ~ sm_ave.sc + veghgt_ave.sc, data = df2_2022_early, family = gaussian(), REML=FALSE)
+summary(sem_gpi_early2022_log) #AIC=-553.6
+plot(simulateResiduals(sem_gpi_early2022_log, refit=FALSE))
+
+AICc(sem_gpi_early2022, sem_gpi_early2022_sqrt, sem_gpi_early2022_log)
+
+# best model
+sem_gpi_early2022_log <- glmmTMB(log(GPI200_ave+1) ~ sm_ave.sc + veghgt_ave.sc, data = df2_2022_early, family = gaussian(), REML=T)
+summary(sem_gpi_early2022_log) 
+plot(simulateResiduals(sem_gpi_early2022_log, refit=FALSE))
+```
+
+GPI 2022 - mid
+```{r}
+sem_gpi_mid2022 <- glmmTMB(GPI200_ave ~ sm_ave.sc + veghgt_ave.sc, data = df2_2022_mid, family = gaussian(), REML=FALSE)
+summary(sem_gpi_mid2022) #AIC=217.2
+plot(simulateResiduals(sem_gpi_mid2022, refit=FALSE))
+
+sem_gpi_mid2022_sqrt <- glmmTMB(sqrt(GPI200_ave) ~ sm_ave.sc + veghgt_ave.sc, data = df2_2022_mid, family = gaussian(), REML=FALSE)
+summary(sem_gpi_mid2022_sqrt) #AIC=-181.5
+plot(simulateResiduals(sem_gpi_mid2022_sqrt, refit=FALSE))
+
+sem_gpi_mid2022_log <- glmmTMB(log(GPI200_ave+1) ~ sm_ave.sc + veghgt_ave.sc, data = df2_2022_mid, family = gaussian(), REML=FALSE)
+summary(sem_gpi_mid2022_log) #AIC=-441.7
+plot(simulateResiduals(sem_gpi_mid2022_log, refit=FALSE))
+
+AICc(sem_gpi_mid2022, sem_gpi_mid2022_sqrt, sem_gpi_mid2022_log)
+
+# best model
+sem_gpi_mid2022_log <- glmmTMB(log(GPI200_ave+1) ~ sm_ave.sc + veghgt_ave.sc, data = df2_2022_mid, family = gaussian(), REML=T)
+summary(sem_gpi_mid2022_log) 
+plot(simulateResiduals(sem_gpi_mid2022_log, refit=FALSE))
+```
+
+GPI 2022 - late
+```{r}
+sem_gpi_late2022 <- glmmTMB(GPI200_ave ~ sm_ave.sc + veghgt_ave.sc, data = df2_2022_late, family = gaussian(), REML=FALSE)
+summary(sem_gpi_late2022) #AIC=188.5
+plot(simulateResiduals(sem_gpi_late2022, refit=FALSE))
+
+sem_gpi_late2022_sqrt <- glmmTMB(sqrt(GPI200_ave) ~ sm_ave.sc + veghgt_ave.sc, data = df2_2022_late, family = gaussian(), REML=FALSE)
+summary(sem_gpi_late2022_sqrt) #AIC=-122.5
+plot(simulateResiduals(sem_gpi_late2022_sqrt, refit=FALSE))
+
+sem_gpi_late2022_log <- glmmTMB(log(GPI200_ave+1) ~ sm_ave.sc + veghgt_ave.sc, data = df2_2022_late, family = gaussian(), REML=FALSE)
+summary(sem_gpi_late2022_log) #AIC=-325.4
+plot(simulateResiduals(sem_gpi_late2022_log, refit=FALSE))
+
+AICc(sem_gpi_late2022, sem_gpi_late2022_sqrt, sem_gpi_late2022_log)
+
+# best model
+sem_gpi_late2022_log <- glmmTMB(log(GPI200_ave+1) ~ sm_ave.sc + veghgt_ave.sc, data = df2_2022_late, family = gaussian(), REML=T)
+summary(sem_gpi_late2022_log) 
+plot(simulateResiduals(sem_gpi_late2022_log, refit=FALSE))
+```
+
+
+Soil moisture models do not look good
+
+soil moisture 2022 - early
+```{r}
+sem_sm_early2022 <- glmmTMB(sm_ave ~ knmitemp_ave.sc + (1|rainfall_cat), data = df2_2022_early, family = gaussian(), REML=FALSE)
+summary(sem_sm_early2022) #AIC=531.4
+plot(simulateResiduals(sem_sm_early2022, refit=FALSE))
+
+sem_sm_early2022_sqrt <- glmmTMB(sqrt(sm_ave) ~ knmitemp_ave.sc + (1|rainfall_cat), data = df2_2022_early, family = gaussian(), REML=FALSE)
+summary(sem_sm_early2022_sqrt) #AIC=212.5
+plot(simulateResiduals(sem_sm_early2022_sqrt, refit=FALSE))
+
+sem_sm_early2022_log <- glmmTMB(log(sm_ave+1) ~ knmitemp_ave.sc + (1|rainfall_cat), data = df2_2022_early, family = gaussian(), REML=FALSE)
+summary(sem_sm_early2022_log) #AIC=76.3
+plot(simulateResiduals(sem_sm_early2022_log, refit=FALSE))
+
+AICc(sem_sm_early2022, sem_sm_early2022_sqrt, sem_sm_early2022_log)
+
+# best model
+sem_sm_early2022_log <- glmmTMB(log(sm_ave+1) ~ knmitemp_ave.sc + (1|rainfall_cat), data = df2_2022_early, family = gaussian(), REML=T)
+summary(sem_sm_early2022_log) #AIC=76.3
+plot(simulateResiduals(sem_sm_early2022_log, refit=FALSE))
+```
+
+soil moisture 2022 - mid
+```{r}
+sem_sm_mid2022 <- glmmTMB(sm_ave ~ knmitemp_ave.sc + (1|rainfall_cat), data = df2_2022_mid, family = gaussian(), REML=FALSE)
+summary(sem_sm_mid2022) #AIC=397.5
+plot(simulateResiduals(sem_sm_mid2022, refit=FALSE))
+
+sem_sm_mid2022_sqrt <- glmmTMB(sqrt(sm_ave) ~ knmitemp_ave.sc + (1|rainfall_cat), data = df2_2022_mid, family = gaussian(), REML=FALSE)
+summary(sem_sm_mid2022_sqrt) #AIC=145.3
+plot(simulateResiduals(sem_sm_mid2022_sqrt, refit=FALSE))
+
+sem_sm_mid2022_log <- glmmTMB(log(sm_ave+1) ~ knmitemp_ave.sc + (1|rainfall_cat), data = df2_2022_mid, family = gaussian(), REML=FALSE)
+summary(sem_sm_mid2022_log) #AIC=34.1
+plot(simulateResiduals(sem_sm_mid2022_log, refit=FALSE))
+
+AICc(sem_sm_mid2022, sem_sm_mid2022_sqrt, sem_sm_mid2022_log)
+
+# best model
+sem_sm_mid2022_log <- glmmTMB(log(sm_ave+1) ~ knmitemp_ave.sc + (1|rainfall_cat), data = df2_2022_mid, family = gaussian(), REML=T)
+summary(sem_sm_mid2022_log)
+plot(simulateResiduals(sem_sm_mid2022_log, refit=FALSE))
+```
+
+soil moisture 2022 - late
+```{r}
+sem_sm_late2022 <- glmmTMB(sm_ave ~ knmitemp_ave.sc + (1|rainfall_cat), data = df2_2022_late, family = gaussian(), REML=FALSE)
+summary(sem_sm_late2022) #AIC=231.7
+plot(simulateResiduals(sem_sm_late2022, refit=FALSE))
+
+sem_sm_late2022_sqrt <- glmmTMB(sqrt(sm_ave) ~ knmitemp_ave.sc + (1|rainfall_cat), data = df2_2022_late, family = gaussian(), REML=FALSE)
+summary(sem_sm_late2022_sqrt) #AIC=77.2
+plot(simulateResiduals(sem_sm_late2022_sqrt, refit=FALSE))
+
+sem_sm_late2022_log <- glmmTMB(log(sm_ave+1) ~ knmitemp_ave.sc + (1|rainfall_cat), data = df2_2022_late, family = gaussian(), REML=FALSE)
+summary(sem_sm_late2022_log) #AIC=27.6
+plot(simulateResiduals(sem_sm_late2022_log, refit=FALSE))
+
+AICc(sem_sm_late2022, sem_sm_late2022_sqrt, sem_sm_late2022_log)
+
+# best model
+sem_sm_late2022_log <- glmmTMB(log(sm_ave+1) ~ knmitemp_ave.sc + (1|rainfall_cat), data = df2_2022_late, family = gaussian(), REML=T)
+summary(sem_sm_late2022_log)
+plot(simulateResiduals(sem_sm_late2022_log, refit=FALSE))
+```
+
+
+
+
+
+
+Biomass 2023 - early 
+```{r}
+sem_biomass_early2023 <- glmmTMB(biomass ~ veghgt_ave.sc + sm_ave.sc + GPI200_ave.sc + LUI2016.sc + mowing.sc + (1|rainfall_cat) + (1|windspeed_cat) + knmitemp_ave.sc, data = df2_2023_early, family = gaussian(), REML=FALSE)
+summary(sem_biomass_early2023) #AIC=605.6
+plot(simulateResiduals(sem_biomass_early2023, refit=FALSE))
+
+sem_biomass_early2023_sqrt <- glmmTMB(sqrt(biomass) ~ veghgt_ave.sc + sm_ave.sc + GPI200_ave.sc + LUI2016.sc + mowing.sc + (1|rainfall_cat) + (1|windspeed_cat) + knmitemp_ave.sc, data = df2_2023_early, family = gaussian(), REML=FALSE)
+summary(sem_biomass_early2023_sqrt) #AIC=266.0
+plot(simulateResiduals(sem_biomass_early2023_sqrt, refit=FALSE))
+
+sem_biomass_early2023_log <- glmmTMB(log(biomass+1) ~ veghgt_ave.sc + sm_ave.sc + GPI200_ave.sc + LUI2016.sc + mowing.sc + (1|rainfall_cat) + (1|windspeed_cat) + knmitemp_ave.sc, data = df2_2023_early, family = gaussian(), REML=FALSE)
+summary(sem_biomass_early2023_log) #AIC=182.4
+plot(simulateResiduals(sem_biomass_early2023_log, refit=FALSE))
+
+
+AICc(sem_biomass_early2023, sem_biomass_early2023_sqrt, sem_biomass_early2023_log)
+
+#best model
+sem_biomass_early2023_log <- glmmTMB(log(biomass+1) ~ veghgt_ave.sc + sm_ave.sc + GPI200_ave.sc + LUI2016.sc + mowing.sc + (1|rainfall_cat) + (1|windspeed_cat) + knmitemp_ave.sc, data = df2_2023_early, family = gaussian(), REML=T)
+summary(sem_biomass_early2023_log) 
+plot(simulateResiduals(sem_biomass_early2023_log, refit=FALSE))
+```
+
+biomass 2023 - mid
+```{r}
+sem_biomass_mid2023 <- glmmTMB(biomass ~ veghgt_ave.sc + sm_ave.sc + GPI200_ave.sc + LUI2016.sc + mowing.sc + (1|rainfall_cat) + (1|windspeed_cat) + knmitemp_ave.sc, data = df2_2023_mid, family = gaussian(), REML=FALSE)
+summary(sem_biomass_mid2023) #AIC=545.7
+plot(simulateResiduals(sem_biomass_mid2023, refit=FALSE))
+
+sem_biomass_mid2023_sqrt <- glmmTMB(sqrt(biomass) ~ veghgt_ave.sc + sm_ave.sc + GPI200_ave.sc + LUI2016.sc + mowing.sc + (1|rainfall_cat) + (1|windspeed_cat) + knmitemp_ave.sc, data = df2_2023_mid, family = gaussian(), REML=FALSE)
+summary(sem_biomass_mid2023_sqrt) #AIC=228.6
+plot(simulateResiduals(sem_biomass_mid2023_sqrt, refit=FALSE))
+
+sem_biomass_mid2023_log <- glmmTMB(log(biomass+1) ~ veghgt_ave.sc + sm_ave.sc + GPI200_ave.sc + LUI2016.sc + mowing.sc + (1|rainfall_cat) + (1|windspeed_cat) + knmitemp_ave.sc, data = df2_2023_mid, family = gaussian(), REML=FALSE)
+summary(sem_biomass_mid2023_log) #AIC=102.1
+plot(simulateResiduals(sem_biomass_mid2023_log, refit=FALSE))
+
+
+AICc(sem_biomass_mid2023, sem_biomass_mid2023_sqrt, sem_biomass_mid2023_log)
+
+#best model
+sem_biomass_mid2023_log <- glmmTMB(log(biomass+1) ~ veghgt_ave.sc + sm_ave.sc + GPI200_ave.sc + LUI2016.sc + mowing.sc + (1|rainfall_cat) + (1|windspeed_cat) + knmitemp_ave.sc, data = df2_2023_mid, family = gaussian(), REML=T)
+summary(sem_biomass_mid2023_log) 
+plot(simulateResiduals(sem_biomass_mid2023_log, refit=FALSE))
+```
+
+biomass 2023 - late
+```{r}
+sem_biomass_late2023 <- glmmTMB(biomass ~ veghgt_ave.sc + sm_ave.sc + GPI200_ave.sc + LUI2016.sc + mowing.sc + (1|rainfall_cat) + (1|windspeed_cat) + knmitemp_ave.sc, data = df2_2023_late, family = gaussian(), REML=FALSE)
+summary(sem_biomass_late2023) #AIC=316.4
+plot(simulateResiduals(sem_biomass_late2023, refit=FALSE))
+
+sem_biomass_late2023_sqrt <- glmmTMB(sqrt(biomass) ~ veghgt_ave.sc + sm_ave.sc + GPI200_ave.sc + LUI2016.sc + mowing.sc + (1|rainfall_cat) + (1|windspeed_cat) + knmitemp_ave.sc, data = df2_2023_late, family = gaussian(), REML=FALSE)
+summary(sem_biomass_late2023_sqrt) #AIC=142.2
+plot(simulateResiduals(sem_biomass_late2023_sqrt, refit=FALSE))
+
+sem_biomass_late2023_log <- glmmTMB(log(biomass+1) ~ veghgt_ave.sc + sm_ave.sc + GPI200_ave.sc + LUI2016.sc + mowing.sc + (1|rainfall_cat) + (1|windspeed_cat) + knmitemp_ave.sc, data = df2_2023_late, family = gaussian(), REML=FALSE)
+summary(sem_biomass_late2023_log) #AIC=85.3
+plot(simulateResiduals(sem_biomass_late2023_log, refit=FALSE))
+
+
+AICc(sem_biomass_late2023, sem_biomass_late2023_sqrt, sem_biomass_late2023_log)
+
+#best model
+sem_biomass_late2023_log <- glmmTMB(log(biomass+1) ~ veghgt_ave.sc + sm_ave.sc + GPI200_ave.sc + LUI2016.sc + mowing.sc + (1|rainfall_cat) + (1|windspeed_cat) + knmitemp_ave.sc, data = df2_2023_late, family = gaussian(), REML=T)
+summary(sem_biomass_late2023_log) 
+plot(simulateResiduals(sem_biomass_late2023_log, refit=FALSE))
+```
+
+
+
+vegetation height 2023 - early
+```{r}
+sem_veghgt_early2023 <- glmmTMB(veghgt_ave ~ sm_ave.sc + (1|rainfall_cat) + knmitemp_ave.sc + mowing.sc, data = df2_2023_early, family = gaussian(), REML=FALSE)
+summary(sem_veghgt_early2023) #AIC=674.6
+plot(simulateResiduals(sem_veghgt_early2023, refit=FALSE))
+
+sem_veghgt_early2023_sqrt <- glmmTMB(sqrt(veghgt_ave) ~ sm_ave.sc + (1|rainfall_cat) + knmitemp_ave.sc + mowing.sc, data = df2_2023_early, family = gaussian(), REML=FALSE)
+summary(sem_veghgt_early2023_sqrt) #AIC=291.1
+plot(simulateResiduals(sem_veghgt_early2023_sqrt, refit=FALSE))
+
+sem_veghgt_early2023_log <- glmmTMB(log(veghgt_ave+1) ~ sm_ave.sc + (1|rainfall_cat) + knmitemp_ave.sc + mowing.sc, data = df2_2023_early, family = gaussian(), REML=FALSE)
+summary(sem_veghgt_early2023_log) #AIC=164.6
+plot(simulateResiduals(sem_veghgt_early2023_log, refit=FALSE))
+
+AICc(sem_veghgt_early2023, sem_veghgt_early2023_sqrt, sem_veghgt_early2023_log)
+
+#best model
+sem_veghgt_early2023_log <- glmmTMB(log(veghgt_ave+1) ~ sm_ave.sc + (1|rainfall_cat) + knmitemp_ave.sc + mowing.sc, data = df2_2023_early, family = gaussian(), REML=T)
+summary(sem_veghgt_early2023_log)
+plot(simulateResiduals(sem_veghgt_early2023_log, refit=FALSE))
+```
+
+vegetation height 2023 - mid
+```{r}
+sem_veghgt_mid2023 <- glmmTMB(veghgt_ave ~ sm_ave.sc + (1|rainfall_cat) + knmitemp_ave.sc + mowing.sc, data = df2_2023_mid, family = gaussian(), REML=FALSE)
+summary(sem_veghgt_mid2023) #AIC=510.4
+plot(simulateResiduals(sem_veghgt_mid2023, refit=FALSE))
+
+sem_veghgt_mid2023_sqrt <- glmmTMB(sqrt(veghgt_ave) ~ sm_ave.sc + (1|rainfall_cat) + knmitemp_ave.sc + mowing.sc, data = df2_2023_mid, family = gaussian(), REML=FALSE)
+summary(sem_veghgt_mid2023_sqrt) #AIC=211.9
+plot(simulateResiduals(sem_veghgt_mid2023_sqrt, refit=FALSE))
+
+sem_veghgt_mid2023_log <- glmmTMB(log(veghgt_ave+1) ~ sm_ave.sc + (1|rainfall_cat) + knmitemp_ave.sc + mowing.sc, data = df2_2023_mid, family = gaussian(), REML=FALSE)
+summary(sem_veghgt_mid2023_log) #AIC=97.9
+plot(simulateResiduals(sem_veghgt_mid2023_log, refit=FALSE))
+
+AICc(sem_veghgt_mid2023, sem_veghgt_mid2023_sqrt, sem_veghgt_mid2023_log)
+
+#best model
+sem_veghgt_mid2023_log <- glmmTMB(log(veghgt_ave+1) ~ sm_ave.sc + (1|rainfall_cat) + knmitemp_ave.sc + mowing.sc, data = df2_2023_mid, family = gaussian(), REML=T)
+summary(sem_veghgt_mid2023_log) 
+plot(simulateResiduals(sem_veghgt_mid2023_log, refit=FALSE))
+```
+
+vegetation height 2023 - late
+```{r}
+sem_veghgt_late2023 <- glmmTMB(veghgt_ave ~ sm_ave.sc + (1|rainfall_cat) + knmitemp_ave.sc + mowing.sc, data = df2_2023_late, family = gaussian(), REML=FALSE)
+summary(sem_veghgt_late2023) #AIC=266.1
+plot(simulateResiduals(sem_veghgt_late2023, refit=FALSE))
+
+sem_veghgt_late2023_sqrt <- glmmTMB(sqrt(veghgt_ave) ~ sm_ave.sc + (1|rainfall_cat) + knmitemp_ave.sc + mowing.sc, data = df2_2023_late, family = gaussian(), REML=FALSE)
+summary(sem_veghgt_late2023_sqrt) #AIC=98.8
+plot(simulateResiduals(sem_veghgt_late2023_sqrt, refit=FALSE))
+
+sem_veghgt_late2023_log <- glmmTMB(log(veghgt_ave+1) ~ sm_ave.sc + (1|rainfall_cat) + knmitemp_ave.sc + mowing.sc, data = df2_2023_late, family = gaussian(), REML=FALSE)
+summary(sem_veghgt_late2023_log) #AIC=42.2
+plot(simulateResiduals(sem_veghgt_late2023_log, refit=FALSE))
+
+AICc(sem_veghgt_late2023, sem_veghgt_late2023_sqrt, sem_veghgt_late2023_log)
+
+#best model
+sem_veghgt_late2023_log <- glmmTMB(log(veghgt_ave+1) ~ sm_ave.sc + (1|rainfall_cat) + knmitemp_ave.sc + mowing.sc, data = df2_2023_late, family = gaussian(), REML=T)
+summary(sem_veghgt_late2023_log)
+plot(simulateResiduals(sem_veghgt_late2023_log, refit=FALSE))
+```
+
+
+
+GPI 2023 - early
+```{r}
+sem_gpi_early2023 <- glmmTMB(GPI200_ave ~ sm_ave.sc + veghgt_ave.sc, data = df2_2023_early, family = gaussian(), REML=FALSE)
+summary(sem_gpi_early2023) #AIC=395.5
+plot(simulateResiduals(sem_gpi_early2023, refit=FALSE))
+
+sem_gpi_early2023_sqrt <- glmmTMB(sqrt(GPI200_ave) ~ sm_ave.sc + veghgt_ave.sc, data = df2_2023_early, family = gaussian(), REML=FALSE)
+summary(sem_gpi_early2023_sqrt) #AIC=-314.2
+plot(simulateResiduals(sem_gpi_early2023_sqrt, refit=FALSE))
+
+sem_gpi_early2023_log <- glmmTMB(log(GPI200_ave+1) ~ sm_ave.sc + veghgt_ave.sc, data = df2_2023_early, family = gaussian(), REML=FALSE)
+summary(sem_gpi_early2023_log) #AIC=-777.5
+plot(simulateResiduals(sem_gpi_early2023_log, refit=FALSE))
+
+AICc(sem_gpi_early2023, sem_gpi_early2023_sqrt, sem_gpi_early2023_log)
+
+# best model
+sem_gpi_early2023_log <- glmmTMB(log(GPI200_ave+1) ~ sm_ave.sc + veghgt_ave.sc, data = df2_2023_early, family = gaussian(), REML=T)
+summary(sem_gpi_early2023_log) 
+plot(simulateResiduals(sem_gpi_early2023_log, refit=FALSE))
+```
+
+GPI 2023 - mid
+```{r}
+sem_gpi_mid2023 <- glmmTMB(GPI200_ave ~ sm_ave.sc + veghgt_ave.sc, data = df2_2023_mid, family = gaussian(), REML=FALSE)
+summary(sem_gpi_mid2023) #AIC=278.9
+plot(simulateResiduals(sem_gpi_mid2023, refit=FALSE))
+
+sem_gpi_mid2023_sqrt <- glmmTMB(sqrt(GPI200_ave) ~ sm_ave.sc + veghgt_ave.sc, data = df2_2023_mid, family = gaussian(), REML=FALSE)
+summary(sem_gpi_mid2023_sqrt) #AIC=-231.5
+plot(simulateResiduals(sem_gpi_mid2023_sqrt, refit=FALSE))
+
+sem_gpi_mid2023_log <- glmmTMB(log(GPI200_ave+1) ~ sm_ave.sc + veghgt_ave.sc, data = df2_2023_mid, family = gaussian(), REML=FALSE)
+summary(sem_gpi_mid2023_log) #AIC=-564.6
+plot(simulateResiduals(sem_gpi_mid2023_log, refit=FALSE))
+
+AICc(sem_gpi_mid2023, sem_gpi_mid2023_sqrt, sem_gpi_mid2023_log)
+
+# best model
+sem_gpi_mid2023_log <- glmmTMB(log(GPI200_ave+1) ~ sm_ave.sc + veghgt_ave.sc, data = df2_2023_mid, family = gaussian(), REML=T)
+summary(sem_gpi_mid2023_log) 
+plot(simulateResiduals(sem_gpi_mid2023_log, refit=FALSE))
+```
+
+GPI 2023 - late
+```{r}
+sem_gpi_late2023 <- glmmTMB(GPI200_ave ~ sm_ave.sc + veghgt_ave.sc, data = df2_2023_late, family = gaussian(), REML=FALSE)
+summary(sem_gpi_late2023) #AIC=198.1
+plot(simulateResiduals(sem_gpi_late2023, refit=FALSE))
+
+sem_gpi_late2023_sqrt <- glmmTMB(sqrt(GPI200_ave) ~ sm_ave.sc + veghgt_ave.sc, data = df2_2023_late, family = gaussian(), REML=FALSE)
+summary(sem_gpi_late2023_sqrt) #AIC=-128.9
+plot(simulateResiduals(sem_gpi_late2023_sqrt, refit=FALSE))
+
+sem_gpi_late2023_log <- glmmTMB(log(GPI200_ave+1) ~ sm_ave.sc + veghgt_ave.sc, data = df2_2023_late, family = gaussian(), REML=FALSE)
+summary(sem_gpi_late2023_log) #AIC=-342.3
+plot(simulateResiduals(sem_gpi_late2023_log, refit=FALSE))
+
+AICc(sem_gpi_late2023, sem_gpi_late2023_sqrt, sem_gpi_late2023_log)
+
+# best model
+sem_gpi_late2023_log <- glmmTMB(log(GPI200_ave+1) ~ sm_ave.sc + veghgt_ave.sc, data = df2_2023_late, family = gaussian(), REML=T)
+summary(sem_gpi_late2023_log)
+plot(simulateResiduals(sem_gpi_late2023_log, refit=FALSE))
+```
+
+
+
+Soil moisture models do not look good
+
+soil moisture 2023 - early
+```{r}
+sem_sm_early2023 <- glmmTMB(sm_ave ~ knmitemp_ave.sc + (1|rainfall_cat), data = df2_2023_early, family = gaussian(), REML=FALSE)
+summary(sem_sm_early2023) #AIC=744.4
+plot(simulateResiduals(sem_sm_early2023, refit=FALSE))
+
+sem_sm_early2023_sqrt <- glmmTMB(sqrt(sm_ave) ~ knmitemp_ave.sc + (1|rainfall_cat), data = df2_2023_early, family = gaussian(), REML=FALSE)
+summary(sem_sm_early2023_sqrt) #AIC=280.1
+plot(simulateResiduals(sem_sm_early2023_sqrt, refit=FALSE))
+
+sem_sm_early2023_log <- glmmTMB(log(sm_ave+1) ~ knmitemp_ave.sc + (1|rainfall_cat), data = df2_2023_early, family = gaussian(), REML=FALSE)
+summary(sem_sm_early2023_log) #AIC=67.2
+plot(simulateResiduals(sem_sm_early2023_log, refit=FALSE))
+
+AICc(sem_sm_early2023, sem_sm_early2023_sqrt, sem_sm_early2023_log)
+
+# best model
+sem_sm_early2023_log <- glmmTMB(log(sm_ave+1) ~ knmitemp_ave.sc + (1|rainfall_cat), data = df2_2023_early, family = gaussian(), REML=T)
+summary(sem_sm_early2023_log) #AIC=76.3
+plot(simulateResiduals(sem_sm_early2023_log, refit=FALSE))
+```
+
+soil moisture 2023 - mid
+```{r}
+sem_sm_mid2023 <- glmmTMB(sm_ave ~ knmitemp_ave.sc + (1|rainfall_cat), data = df2_2023_mid, family = gaussian(), REML=FALSE)
+summary(sem_sm_mid2023) #AIC=506.2
+plot(simulateResiduals(sem_sm_mid2023, refit=FALSE))
+
+sem_sm_mid2023_sqrt <- glmmTMB(sqrt(sm_ave) ~ knmitemp_ave.sc + (1|rainfall_cat), data = df2_2023_mid, family = gaussian(), REML=FALSE)
+summary(sem_sm_mid2023_sqrt) #AIC=223.9
+plot(simulateResiduals(sem_sm_mid2023_sqrt, refit=FALSE))
+
+sem_sm_mid2023_log <- glmmTMB(log(sm_ave+1) ~ knmitemp_ave.sc + (1|rainfall_cat), data = df2_2023_mid, family = gaussian(), REML=FALSE)
+summary(sem_sm_mid2023_log) #AIC=125.5
+plot(simulateResiduals(sem_sm_mid2023_log, refit=FALSE))
+
+AICc(sem_sm_mid2023, sem_sm_mid2023_sqrt, sem_sm_mid2023_log)
+
+# best model
+sem_sm_mid2023_log <- glmmTMB(log(sm_ave+1) ~ knmitemp_ave.sc + (1|rainfall_cat), data = df2_2023_mid, family = gaussian(), REML=T)
+summary(sem_sm_mid2023_log)
+plot(simulateResiduals(sem_sm_mid2023_log, refit=FALSE))
+```
+
+soil moisture 2023 - late
+```{r}
+sem_sm_late2023 <- glmmTMB(sm_ave ~ knmitemp_ave.sc + (1|rainfall_cat), data = df2_2023_late, family = gaussian(), REML=FALSE)
+summary(sem_sm_late2023) #AIC=337.6
+plot(simulateResiduals(sem_sm_late2023, refit=FALSE))
+
+
+sem_sm_late2023_sqrt <- glmmTMB(sqrt(sm_ave) ~ knmitemp_ave.sc + (1|rainfall_cat), data = df2_2023_late, family = gaussian(), REML=FALSE)
+summary(sem_sm_late2023_sqrt) #AIC=155.1
+plot(simulateResiduals(sem_sm_late2023_sqrt, refit=FALSE))
+
+sem_sm_late2023_log <- glmmTMB(log(sm_ave+1) ~ knmitemp_ave.sc + (1|rainfall_cat), data = df2_2023_late, family = gaussian(), REML=FALSE)
+summary(sem_sm_late2023_log) #AIC=95.8
+plot(simulateResiduals(sem_sm_late2023_log, refit=FALSE))
+
+AICc(sem_sm_late2023, sem_sm_late2023_sqrt, sem_sm_late2023_log)
+
+# best model
+sem_sm_late2023_log <- glmmTMB(log(sm_ave+1) ~ knmitemp_ave.sc + (1|rainfall_cat), data = df2_2023_late, family = gaussian(), REML=T)
+summary(sem_sm_late2023_log)
+plot(simulateResiduals(sem_sm_late2023_log, refit=FALSE))
+```
